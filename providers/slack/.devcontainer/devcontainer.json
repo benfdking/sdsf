@@ -1,0 +1,32 @@
+{
+  "name": "Docker in Docker Development Container Template",
+  "dockerFile": "Dockerfile",
+	"runArgs": ["--init", "--privileged"],
+	"mounts": ["source=dind-var-lib-docker,target=/var/lib/docker,type=volume"],
+	"overrideCommand": false,
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "esbenp.prettier-vscode",
+        "golang.go",
+        "Gruntfuggly.todo-tree",
+        "hashicorp.terraform",
+        "ms-azuretools.vscode-docker",
+        "vscode-icons-team.vscode-icons"
+      ],
+      "settings": {
+        "workbench.iconTheme": "vscode-icons"
+      }
+    }
+  },
+
+  // Use 'forwardPorts' to make a list of ports inside the container available locally.
+  // "forwardPorts": [],
+
+  // Use 'postCreateCommand' to run commands after the container is created.
+  "postCreateCommand": ".devcontainer/scripts/postCreate.sh"
+
+	// Comment out to connect as root instead. More info: https://aka.ms/vscode-remote/containers/non-root.
+	// "remoteUser": "vscode"
+}

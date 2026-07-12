@@ -1,0 +1,14 @@
+name: Daily code review
+scope: TEAM_VISIBLE
+enabled: true
+memoryEnabled: true
+model: gpt-5.5-high
+triggers:
+  - cron:
+      cron: "0 9 * * 1-5"
+actions:
+  - requestReviewers: {}
+gitConfig:
+  repos:
+    - https://github.com/benfdking/sdsf
+  branch: main
