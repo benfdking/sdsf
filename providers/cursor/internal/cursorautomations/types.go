@@ -30,13 +30,27 @@ type Config struct {
 
 	// Carried through verbatim and modelled so a full sync doesn't drop it.
 	SlackNotifiedChannels []string   `yaml:"slackNotifiedChannels"`
-	GitConfig             *gitConfig `yaml:"gitConfig"`
+	GitConfig             *GitConfig `yaml:"gitConfig"`
 }
 
-// gitConfig carries both tag sets: it flows from the YAML config straight into the API payload.
-type gitConfig struct {
+// GitConfig selects the repositories and base branch available to an automation.
+type GitConfig struct {
 	Repos  []string `json:"repos,omitempty" yaml:"repos"`
 	Branch string   `json:"branch,omitempty" yaml:"branch"`
+}
+
+// NewAutomation validates and constructs an automation without requiring the
+// legacy automation.yaml/prompt.md directory representation.
+func NewAutomation(config Config, prompt string) (Automation, error) {
+	automation := Automation{
+		Dir:    config.Name,
+		Config: config,
+		Prompt: strings.TrimRight(prompt, "\n"),
+	}
+	if err := automation.validate(); err != nil {
+		return Automation{}, err
+	}
+	return automation, nil
 }
 
 // enabled / memoryEnabled dereference their required pointers; nil counts as false.
@@ -97,7 +111,7 @@ type innerWorkflow struct {
 	Actions               []map[string]any `json:"actions,omitempty"`
 	MemoryEnabled         bool             `json:"memoryEnabled"`
 	SlackNotifiedChannels []string         `json:"slackNotifiedChannels,omitempty"`
-	GitConfig             *gitConfig       `json:"gitConfig,omitempty"`
+	GitConfig             *GitConfig       `json:"gitConfig,omitempty"`
 }
 
 type promptStep struct {

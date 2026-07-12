@@ -11,8 +11,8 @@
 
 - Source: `incident-io/internal-ai/internal/cursorautomations`
 - Source revision: `e7f61de25ad26fd0cca52671c3abbbd5b7b026af`
-- The package was copied byte-for-byte into [`providers/cursor/internal/cursorautomations`](providers/cursor/internal/cursorautomations)
+- The package was initially copied byte-for-byte into [`providers/cursor/internal/cursorautomations`](providers/cursor/internal/cursorautomations), then given an exported constructor and Git configuration type so Terraform resources can construct automations directly
 - No repository-level open-source license was present in the private source repository at the copied revision
-- A Terraform Plugin Framework wrapper was added outside the copied package
+- A Terraform Plugin Framework wrapper exposes each automation as a `cursor_automation` resource; the original YAML-directory sync resource is not used
 
 Keep this repository private unless the owners of all included code explicitly authorize redistribution.

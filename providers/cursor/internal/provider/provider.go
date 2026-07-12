@@ -81,7 +81,7 @@ func (p *CursorProvider) Configure(ctx context.Context, req provider.ConfigureRe
 }
 
 func (p *CursorProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{NewAutomationSyncResource}
+	return []func() resource.Resource{NewAutomationResource}
 }
 
 func (p *CursorProvider) DataSources(context.Context) []func() datasource.DataSource {

@@ -7,7 +7,7 @@ SDSF is a private monorepo for Terraform providers that manage the tools used by
 | Provider | Purpose | Location |
 | --- | --- | --- |
 | Slack | Slack users, groups, status, conversations, and HTTP helpers | [`providers/slack`](providers/slack) |
-| Cursor | Directory-based reconciliation of Cursor Automations | [`providers/cursor`](providers/cursor) |
+| Cursor | First-class Terraform resources for Cursor Automations | [`providers/cursor`](providers/cursor) |
 
 Both providers use the Terraform Plugin Framework and require Go 1.26 or newer.
 

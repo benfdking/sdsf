@@ -104,7 +104,7 @@ var _ = Describe("RenderCreatePayload", func() {
 				Model:         "gpt-5.5-high",
 				Enabled:       ptr(true),
 				MemoryEnabled: ptr(true),
-				GitConfig:     &gitConfig{Repos: []string{"https://github.com/org/repo"}, Branch: "master"},
+				GitConfig:     &GitConfig{Repos: []string{"https://github.com/org/repo"}, Branch: "master"},
 			},
 		}
 
