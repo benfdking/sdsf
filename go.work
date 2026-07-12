@@ -2,5 +2,6 @@ go 1.26.0
 
 use (
 	./providers/cursor
+	./providers/linear
 	./providers/slack
 )
