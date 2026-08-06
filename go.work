@@ -1,6 +1,7 @@
 go 1.26.0
 
 use (
+	./cli/cursorjob
 	./providers/cursor
 	./providers/linear
 	./providers/slack
