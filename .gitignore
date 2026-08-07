@@ -1,0 +1,8 @@
+.DS_Store
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+.cursor-automations-state.json
+terraform-provider-slack
+terraform-provider-cursor
