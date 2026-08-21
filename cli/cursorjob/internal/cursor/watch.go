@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 )
 
 // Defaults for WatchOptions.
 const (
 	DefaultPollInterval      = 5 * time.Second
+	DefaultSnapshotInterval  = 15 * time.Second
 	DefaultMaxStreamAttempts = 5
 	DefaultReconnectDelay    = time.Second
 	maxBackoff               = 15 * time.Second
@@ -24,6 +26,16 @@ type WatchOptions struct {
 	// OnNotice receives human-readable transport notes — reconnects, falling
 	// back to polling — that are about the CLI rather than the run itself.
 	OnNotice func(string)
+
+	// OnSnapshot receives authoritative run snapshots from GetRun. When set,
+	// WatchRun also refreshes the snapshot periodically while an SSE stream is
+	// open. This exposes branch and PR metadata, which can appear before the
+	// terminal result event. Callbacks may arrive from a background goroutine.
+	OnSnapshot func(*Run)
+
+	// SnapshotInterval is the gap between metadata refreshes while streaming.
+	// It has no effect when OnSnapshot is nil.
+	SnapshotInterval time.Duration
 
 	// PollInterval is the gap between GetRun calls when polling. The API allows
 	// 20 requests/minute per team, so keep this at or above a few seconds.
@@ -44,6 +56,13 @@ func (o WatchOptions) pollInterval() time.Duration {
 		return DefaultPollInterval
 	}
 	return o.PollInterval
+}
+
+func (o WatchOptions) snapshotInterval() time.Duration {
+	if o.SnapshotInterval <= 0 {
+		return DefaultSnapshotInterval
+	}
+	return o.SnapshotInterval
 }
 
 func (o WatchOptions) maxStreamAttempts() int {
@@ -73,6 +92,12 @@ func (o WatchOptions) emit(event Event) {
 	}
 }
 
+func (o WatchOptions) snapshot(run *Run) {
+	if o.OnSnapshot != nil {
+		o.OnSnapshot(run)
+	}
+}
+
 func (o WatchOptions) notice(format string, args ...any) {
 	if o.OnNotice != nil {
 		o.OnNotice(fmt.Sprintf(format, args...))
@@ -93,9 +118,16 @@ func (c *Client) WatchRun(ctx context.Context, agentID, runID string, opts Watch
 	if err != nil {
 		return nil, err
 	}
+	opts.snapshot(run)
 	if IsTerminal(run.Status) {
 		return run, nil
 	}
+
+	// The event stream carries the transcript but only includes git metadata in
+	// its terminal result. Refresh GetRun at a conservative interval so callers
+	// can react when a branch is pushed or a PR is opened during a long run.
+	stopSnapshots := c.watchSnapshots(ctx, agentID, runID, opts)
+	defer stopSnapshots()
 
 	var (
 		lastEventID string
@@ -130,6 +162,7 @@ func (c *Client) WatchRun(ctx context.Context, agentID, runID string, opts Watch
 			if apiErr, ok := errors.AsType[*APIError](err); ok {
 				if apiErr.IsStreamExpired() {
 					opts.notice("event stream expired for %s; polling instead", runID)
+					stopSnapshots()
 					return c.pollUntilTerminal(ctx, agentID, runID, opts)
 				}
 				if !apiErr.IsRetryable() {
@@ -143,6 +176,7 @@ func (c *Client) WatchRun(ctx context.Context, agentID, runID string, opts Watch
 		if getErr != nil {
 			return nil, getErr
 		}
+		opts.snapshot(run)
 		if IsTerminal(run.Status) {
 			return run, nil
 		}
@@ -150,6 +184,7 @@ func (c *Client) WatchRun(ctx context.Context, agentID, runID string, opts Watch
 			// The stream said it was done but the API still reports the run as
 			// in flight — trust the API and let polling settle it.
 			opts.notice("stream closed before %s reached a terminal state; polling instead", runID)
+			stopSnapshots()
 			return c.pollUntilTerminal(ctx, agentID, runID, opts)
 		}
 
@@ -160,6 +195,7 @@ func (c *Client) WatchRun(ctx context.Context, agentID, runID string, opts Watch
 		}
 		if attempt >= opts.maxStreamAttempts() {
 			opts.notice("giving up on the event stream after %d attempts; polling instead", attempt)
+			stopSnapshots()
 			return c.pollUntilTerminal(ctx, agentID, runID, opts)
 		}
 		if err := sleep(ctx, opts.backoff(attempt)); err != nil {
@@ -189,7 +225,10 @@ func (c *Client) pollUntilTerminal(ctx context.Context, agentID, runID string, o
 			}
 			opts.notice("poll failed (%v); retrying", err)
 		} else if IsTerminal(run.Status) {
+			opts.snapshot(run)
 			return run, nil
+		} else {
+			opts.snapshot(run)
 		}
 
 		select {
@@ -197,6 +236,47 @@ func (c *Client) pollUntilTerminal(ctx context.Context, agentID, runID string, o
 			return nil, ctx.Err()
 		case <-ticker.C:
 		}
+	}
+}
+
+// watchSnapshots starts the low-rate metadata observer used while SSE owns the
+// main wait loop. The returned function cancels it and waits for it to stop,
+// ensuring no callback can outlive WatchRun.
+func (c *Client) watchSnapshots(ctx context.Context, agentID, runID string, opts WatchOptions) func() {
+	if opts.OnSnapshot == nil {
+		return func() {}
+	}
+
+	observerCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(opts.snapshotInterval())
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-observerCtx.Done():
+				return
+			case <-ticker.C:
+				run, err := c.GetRun(observerCtx, agentID, runID)
+				if err != nil {
+					continue
+				}
+				opts.snapshot(run)
+				if IsTerminal(run.Status) {
+					return
+				}
+			}
+		}
+	}()
+
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			cancel()
+			<-done
+		})
 	}
 }
 

@@ -83,6 +83,48 @@ func TestWatchRunStreamsToCompletion(t *testing.T) {
 	}
 }
 
+func TestWatchRunRefreshesGitMetadataWhileStreaming(t *testing.T) {
+	var runCalls atomic.Int32
+
+	client := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/agents/bc-1/runs/run-1":
+			switch runCalls.Add(1) {
+			case 1:
+				_, _ = w.Write([]byte(`{"id":"run-1","status":"RUNNING"}`))
+			case 2:
+				_, _ = w.Write([]byte(`{"id":"run-1","status":"RUNNING","git":{"branches":[{"branch":"cursor/live-update"}]}}`))
+			default:
+				_, _ = w.Write([]byte(`{"id":"run-1","status":"FINISHED","git":{"branches":[{"branch":"cursor/live-update"}]}}`))
+			}
+		case "/v1/agents/bc-1/runs/run-1/stream":
+			w.Header().Set("Content-Type", "text/event-stream")
+			time.Sleep(30 * time.Millisecond)
+			_, _ = w.Write([]byte("event: result\ndata: {\"status\":\"FINISHED\"}\n\nevent: done\ndata: {}\n\n"))
+		}
+	})
+
+	var sawLiveBranch atomic.Bool
+	opts := fastWatch(nil)
+	opts.SnapshotInterval = time.Millisecond
+	opts.OnSnapshot = func(run *Run) {
+		if run.Status == RunStatusRunning && run.Git != nil && len(run.Git.Branches) > 0 && run.Git.Branches[0].Branch == "cursor/live-update" {
+			sawLiveBranch.Store(true)
+		}
+	}
+
+	run, err := client.WatchRun(context.Background(), "bc-1", "run-1", opts)
+	if err != nil {
+		t.Fatalf("WatchRun: %v", err)
+	}
+	if run.Status != RunStatusFinished {
+		t.Errorf("status = %q, want FINISHED", run.Status)
+	}
+	if !sawLiveBranch.Load() {
+		t.Error("did not receive branch metadata while the SSE stream was still running")
+	}
+}
+
 // When the stream's retention window has passed the run is still fine, so the
 // wait must switch to polling rather than fail.
 func TestWatchRunFallsBackToPollingWhenStreamExpired(t *testing.T) {
