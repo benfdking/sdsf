@@ -48,6 +48,12 @@ type App struct {
 	Getenv  func(string) string
 	WorkDir string
 
+	// RunCommand, when set, replaces execution of best-effort local integration
+	// commands. Tests use it to exercise cmux behavior without a running app.
+	RunCommand func(context.Context, string, ...string) error
+	// StartCommand similarly replaces detached process startup.
+	StartCommand func(string, []string, []string) error
+
 	// Client, when set, is used instead of building one from flags and the
 	// environment.
 	Client *cursor.Client

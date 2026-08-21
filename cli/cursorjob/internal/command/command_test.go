@@ -159,6 +159,30 @@ func TestRunReadsPromptFromStdin(t *testing.T) {
 	}
 }
 
+func TestDetachedRunInsideCMUXStartsBackgroundWait(t *testing.T) {
+	h := newHarness(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"agent":{"id":"bc-1","name":"task"},"run":{"id":"run-1","agentId":"bc-1"}}`))
+	})
+	h.app.Getenv = func(key string) string {
+		return map[string]string{
+			"CMUX_WORKSPACE_ID":     "workspace-1",
+			"CMUX_BUNDLED_CLI_PATH": "/test/bin/cmux",
+		}[key]
+	}
+	var childArgs []string
+	h.app.StartCommand = func(_ string, args, _ []string) error {
+		childArgs = append([]string(nil), args...)
+		return nil
+	}
+
+	if code := h.run("run", "--json", "--no-git", "do the task"); code != ExitOK {
+		t.Fatalf("exit code = %d (stderr: %s)", code, h.stderr)
+	}
+	if got := strings.Join(childArgs, " "); got != "wait bc-1 run-1" {
+		t.Errorf("background command = %q, want wait for submitted run", got)
+	}
+}
+
 func TestRunRejectsInvalidMode(t *testing.T) {
 	h := newHarness(t, func(http.ResponseWriter, *http.Request) {
 		t.Error("no request should be made for an invalid mode")

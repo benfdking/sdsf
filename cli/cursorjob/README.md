@@ -54,6 +54,25 @@ Submit and block in one step with `--follow`:
 cursorjob run --follow --auto-pr "fix the flaky conversation test"
 ```
 
+### cmux integration
+
+When launched from a [cmux](https://cmux.com) workspace, every active watch
+(`run --follow`, `followup --follow`, `attach`, or `wait`) mirrors the job into
+the originating workspace:
+
+- The workspace uses the Cursor agent/PR name (and the PR number once known).
+- The originating tab uses the remote Cursor branch name.
+- Sidebar status pills show the run, branch, and PR state.
+- A cmux notification is posted when branch/PR metadata changes and when the
+  run reaches a terminal state.
+
+Cursor can publish branch metadata before the run ends, so cursorjob refreshes
+it every 15 seconds while the transcript stream is open. A detached `run` or
+`followup` starts a quiet background `wait`, preserving these updates after the
+submitting command exits. Outside cmux—or if its local control socket is not
+available—the integration is silently skipped and never changes the job's exit
+status.
+
 Block silently in a script, and branch on the outcome:
 
 ```bash

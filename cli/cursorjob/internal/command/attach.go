@@ -19,6 +19,11 @@ type watchConfig struct {
 	// quiet suppresses the transcript, leaving only the final outcome.
 	quiet        bool
 	pollInterval time.Duration
+
+	// agentName avoids another API request for run --follow, which already has
+	// the newly-created agent response. Attach/followup resolve it on demand.
+	agentName        string
+	snapshotInterval time.Duration
 }
 
 func cmdAttach(ctx context.Context, a *App, args []string) error {
@@ -88,16 +93,34 @@ func (a *App) watch(ctx context.Context, client *cursor.Client, agentID, runID s
 		return err
 	}
 
+	cmux := a.newCMUXJob()
+	if cmux != nil {
+		agentName := cfg.agentName
+		if agentName == "" {
+			// Naming is optional; a metadata lookup failure must not prevent the
+			// actual run from being watched.
+			if agent, getErr := client.GetAgent(ctx, agentID); getErr == nil {
+				agentName = agent.Name
+			}
+		}
+		cmux.start(agentName, resolvedRunID)
+	}
+
 	renderer := &eventRenderer{app: a, cfg: cfg}
 	if !cfg.quiet && !cfg.json {
 		fmt.Fprintf(a.Stderr, "Attached to %s (ctrl-c to detach; the run keeps going)\n\n", resolvedRunID)
 	}
 
-	run, err := client.WatchRun(ctx, agentID, resolvedRunID, cursor.WatchOptions{
+	watchOptions := cursor.WatchOptions{
 		OnEvent:      renderer.handle,
 		OnNotice:     renderer.notice,
 		PollInterval: cfg.pollInterval,
-	})
+	}
+	if cmux != nil {
+		watchOptions.OnSnapshot = cmux.observe
+		watchOptions.SnapshotInterval = cfg.snapshotInterval
+	}
+	run, err := client.WatchRun(ctx, agentID, resolvedRunID, watchOptions)
 	if err != nil {
 		if ctx.Err() != nil {
 			// Detaching is not a failure of the run, but it is not a success
@@ -110,6 +133,7 @@ func (a *App) watch(ctx context.Context, client *cursor.Client, agentID, runID s
 	}
 
 	renderer.finish()
+	cmux.finish(run)
 
 	if cfg.json {
 		// Same newline-delimited shape as the events, tagged so a consumer can

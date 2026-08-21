@@ -126,7 +126,9 @@ func cmdRun(ctx context.Context, a *App, args []string) error {
 
 	switch {
 	case common.json && !*follow:
-		return writeJSON(a.Stdout, created)
+		if err := writeJSON(a.Stdout, created); err != nil {
+			return err
+		}
 	case common.json:
 		// Keep the newline-delimited shape the stream uses, so the ids are still
 		// available as the first record.
@@ -142,11 +144,13 @@ func cmdRun(ctx context.Context, a *App, args []string) error {
 	}
 
 	if !*follow {
+		a.startDetachedCMUXWatch(common, created.Run.AgentID, created.Run.ID)
 		return nil
 	}
 	return a.watch(ctx, client, created.Run.AgentID, created.Run.ID, watchConfig{
-		json:    common.json,
-		verbose: *verbose,
+		json:      common.json,
+		verbose:   *verbose,
+		agentName: created.Agent.Name,
 	})
 }
 
@@ -194,7 +198,9 @@ func cmdFollowup(ctx context.Context, a *App, args []string) error {
 
 	switch {
 	case common.json && !*follow:
-		return writeJSON(a.Stdout, run)
+		if err := writeJSON(a.Stdout, run); err != nil {
+			return err
+		}
 	case common.json:
 		if err := writeJSONLine(a.Stdout, map[string]any{"type": "created", "run": run}); err != nil {
 			return err
@@ -206,6 +212,7 @@ func cmdFollowup(ctx context.Context, a *App, args []string) error {
 	}
 
 	if !*follow {
+		a.startDetachedCMUXWatch(common, run.AgentID, run.ID)
 		return nil
 	}
 	return a.watch(ctx, client, run.AgentID, run.ID, watchConfig{
